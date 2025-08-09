@@ -20,7 +20,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.airtable.interview.airtableschedule.models.Event
-import com.airtable.interview.airtableschedule.utils.assignLanes
 import java.time.temporal.ChronoUnit
 import java.util.Date
 import kotlin.math.max
@@ -35,7 +34,7 @@ fun TimelineScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
-    TimelineView(events = uiState.events)
+    TimelineView(events = uiState.events.sortedBy { event -> event.startDate })
 }
 
 /**
@@ -68,27 +67,35 @@ private fun TimelineView(events: List<Event>) {
     val totalDays = daysBetweenInclusive(minDate, maxDate).toFloat().coerceAtLeast(1f)
 
     // Reuse provided algorithm to group events into non-overlapping lanes
-    val lanes = assignLanes(events)
+    //val lanes = assignLanes(events)
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .padding(8.dp)
     ) {
+        val eventInfos = events.map { event ->
+            val offset = daysBetweenInclusive(minDate, event.startDate).toInt() - 1 // zero-based offset
+            val duration = daysBetweenInclusive(event.startDate, event.endDate).toInt()
+            EventInfo(event, offset.coerceAtLeast(0), duration.coerceAtLeast(1))
+        }
         // Render a simple date scale (labels a cada ~6 divisões para evitar poluição)
-        DateScale(events = events.distinctBy { it.startDate }, minDate = minDate, maxDate = maxDate)
+        Row(
+            modifier = Modifier
+                .horizontalScroll(rememberScrollState())
+        ) {
+            Column {
+                DateScale(events = eventInfos.distinctBy { it.event.startDate }, minDate = minDate, maxDate = maxDate)
 
-        Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
-        // Render each lane. Cada lane é scrollável horizontalmente para suportar timelines longas.
-        lanes.forEachIndexed { laneIndex, laneEvents ->
-            SwimlaneRow(
-                laneIndex = laneIndex,
-                events = laneEvents,
-                minDate = minDate,
-                totalDays = totalDays
-            )
-            Spacer(modifier = Modifier.height(8.dp))
+                // Render each lane. Cada lane é scrollável horizontalmente para suportar timelines longas.
+                SwimlaneRow(
+                    eventInfos = eventInfos,
+                    minDate = minDate,
+                    totalDays = totalDays
+                )
+            }
         }
     }
 }
@@ -97,53 +104,43 @@ private fun TimelineView(events: List<Event>) {
  * Uma escala horizontal simples de datas, exibindo um rótulo a cada N dias para legibilidade.
  */
 @Composable
-private fun DateScale(events: List<Event>, minDate: Date, maxDate: Date) {
+private fun DateScale(events: List<EventInfo>, minDate: Date, maxDate: Date) {
     val totalDays = daysBetweenInclusive(minDate, maxDate).toInt()
     val labelInterval = max(1, totalDays / 6) // Cerca de 6 rótulos ao longo do eixo
 
     Row(
         modifier = Modifier
-            .fillMaxWidth()
-            .horizontalScroll(rememberScrollState()),
+            .fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        events.forEach { event ->
-            val dayOfTheWeek = DateFormat.format("EEE", event.startDate) as String // Thursday
-            val day = DateFormat.format("dd", event.startDate) as String // 20
-            val monthString = DateFormat.format("MMM", event.startDate) as String // Jun
-            Column(
-                modifier = Modifier.width(80.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+        events.forEach { eventInfo ->
+            Card(
+                modifier = Modifier
+                    .width(80.dp)
+                    .padding(4.dp)
+                    .animateContentSize(),
+                shape = RoundedCornerShape(8.dp)
             ) {
-                Text(
-                    text = monthString.uppercase(),
-                    fontWeight = FontWeight.SemiBold
-                )
-                Text(
-                    text = dayOfTheWeek.uppercase(),
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = day.uppercase()
-                )
+                Column(
+                    modifier = Modifier
+                        .padding(8.dp)
+                        .fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = eventInfo.monthString.uppercase(),
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = eventInfo.dayOfTheWeek.uppercase(),
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = eventInfo.day.uppercase()
+                    )
+                }
             }
         }
-//        var prev = 0
-//        for (dayIndex in 0..totalDays) {
-//            if (dayIndex == 0 || dayIndex % labelInterval == 0 || dayIndex == totalDays) {
-//                val label =
-//                    minDate.toInstant().plus(dayIndex.toLong(), ChronoUnit.DAYS).toString().substring(0, 10)
-//                val gap = (dayIndex - prev).toFloat().coerceAtLeast(0.1f)
-//                Spacer(modifier = Modifier.weight(gap))
-//                Text(
-//                    text = label,
-//                    modifier = Modifier.padding(horizontal = 4.dp),
-//                    maxLines = 1,
-//                    overflow = TextOverflow.Ellipsis
-//                )
-//                prev = dayIndex
-//            }
-//        }
     }
 }
 
@@ -152,34 +149,22 @@ private fun DateScale(events: List<Event>, minDate: Date, maxDate: Date) {
  * Garante espaçamento correto e evita peso zero no Spacer.
  */
 @Composable
-private fun SwimlaneRow(laneIndex: Int, events: List<Event>, minDate: Date, totalDays: Float) {
-    val scrollState = rememberScrollState()
-
+private fun SwimlaneRow(eventInfos: List<EventInfo>, minDate: Date, totalDays: Float) {
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            //.height(64.dp)
-            .clip(RoundedCornerShape(6.dp))
-            .background(color = androidx.compose.material3.MaterialTheme.colorScheme.surfaceVariant)
-            .horizontalScroll(scrollState)
-            .padding(8.dp),
+        modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        val eventInfos = events.sortedBy { it.startDate }.map { event ->
-            val offset = daysBetweenInclusive(minDate, event.startDate).toInt() - 1 // zero-based offset
-            val duration = daysBetweenInclusive(event.startDate, event.endDate).toInt()
-            EventInfo(event, offset.coerceAtLeast(0), duration.coerceAtLeast(1))
-        }
 
         var prevEnd = 0
         Column {
             eventInfos.forEach { info ->
-                val gap = (info.offset - prevEnd).toFloat().coerceAtLeast(0f).dp
-
-                if (gap > 0.dp) {
-                    Spacer(modifier = Modifier.width(gap))
+                Row {
+                    if (info.offset > 0) {
+                        Spacer(modifier = Modifier.width((info.offset * 80).dp))
+                    }
+                    EventBox(modifier = Modifier.width((info.duration * 80).dp), eventInfo = info)
                 }
-                EventBox(modifier = Modifier.width((info.duration * 50).dp), event = info.event)
+                Spacer(modifier = Modifier.height(8.dp))
                 prevEnd = info.offset + info.duration
             }
         }
@@ -196,7 +181,7 @@ private fun SwimlaneRow(laneIndex: Int, events: List<Event>, minDate: Date, tota
  * Cores fixas para variar visualmente entre eventos.
  */
 @Composable
-private fun EventBox(modifier: Modifier = Modifier, event: Event) {
+private fun EventBox(modifier: Modifier = Modifier, eventInfo: EventInfo) {
     val colors = listOf(
         0xFF7C4DFF, // roxo
         0xFF03DAC5, // teal
@@ -204,7 +189,7 @@ private fun EventBox(modifier: Modifier = Modifier, event: Event) {
         0xFF90CAF9, // azul claro
         0xFFEF9A9A  // vermelho claro
     )
-    val color = androidx.compose.ui.graphics.Color(colors[event.id % colors.size])
+    val color = androidx.compose.ui.graphics.Color(colors[eventInfo.event.id % colors.size])
 
     Card(
         modifier = modifier
@@ -213,28 +198,41 @@ private fun EventBox(modifier: Modifier = Modifier, event: Event) {
             .animateContentSize(),
         shape = RoundedCornerShape(8.dp)
     ) {
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 // Largura mínima para evitar caixas muito pequenas
                 .widthIn(min = 64.dp)
                 .background(color)
                 .padding(8.dp),
-            contentAlignment = Alignment.CenterStart
+            horizontalAlignment = Alignment.Start
         ) {
             Text(
-                text = event.name,
-                maxLines = 1,
+                text = eventInfo.event.name,
                 overflow = TextOverflow.Ellipsis,
                 color = androidx.compose.material3.MaterialTheme.colorScheme.onPrimary,
-                softWrap = false
+                softWrap = false,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = "${eventInfo.startDate} - ${eventInfo.endDate}",
+                color = androidx.compose.material3.MaterialTheme.colorScheme.onPrimary
             )
         }
     }
 }
 
 
-private data class EventInfo(val event: Event, val offset: Int, val duration: Int)
+private data class EventInfo(
+    val event: Event,
+    val offset: Int,
+    val duration: Int,
+    val startDate: String = DateFormat.format("MM-dd", event.startDate) as String,
+    val endDate: String = DateFormat.format("MM-dd", event.endDate) as String,
+    val dayOfTheWeek: String = DateFormat.format("EEE", event.startDate) as String,
+    val day: String = DateFormat.format("dd", event.startDate) as String,
+    val monthString: String = DateFormat.format("MMM", event.startDate) as String
+)
 
 /** Dias inclusivos entre duas datas (ex: mesma data => 1 dia). */
 private fun daysBetweenInclusive(start: Date, end: Date): Long {
