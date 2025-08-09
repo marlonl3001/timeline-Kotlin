@@ -1,4 +1,4 @@
-package com.airtable.interview.airtableschedule.timeline
+package com.airtable.interview.airtableschedule.presentation.timeline
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope

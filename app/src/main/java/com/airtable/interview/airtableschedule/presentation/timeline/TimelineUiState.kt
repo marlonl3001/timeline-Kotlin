@@ -1,4 +1,4 @@
-package com.airtable.interview.airtableschedule.timeline
+package com.airtable.interview.airtableschedule.presentation.timeline
 
 import com.airtable.interview.airtableschedule.models.Event
 
