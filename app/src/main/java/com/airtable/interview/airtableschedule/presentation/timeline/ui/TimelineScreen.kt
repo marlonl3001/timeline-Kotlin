@@ -1,6 +1,5 @@
-package com.airtable.interview.airtableschedule.presentation.timeline
+package com.airtable.interview.airtableschedule.presentation.timeline.ui
 
-import android.text.format.DateFormat
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
@@ -23,15 +22,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.airtable.interview.airtableschedule.models.Event
-import java.time.temporal.ChronoUnit
-import java.util.Date
-import java.util.Locale
-import kotlin.math.max
+import com.airtable.interview.airtableschedule.models.DateScale
+import com.airtable.interview.airtableschedule.models.EventInfo
+import com.airtable.interview.airtableschedule.presentation.timeline.viewmodel.TimelineViewModel
 
 /**
  * TimelineScreen: composable entry shown from MainActivity.
@@ -43,18 +41,18 @@ fun TimelineScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
-    TimelineView(events = uiState.events.sortedBy { event -> event.startDate })
+    TimelineView(
+        eventInfos = uiState.eventInfos.sortedBy { event -> event.startDate },
+        dateScales = uiState.dateScales
+    )
 }
 
 /**
- * Top-level view that:
- * 1) Guards empty state
- * 2) Computes global min/max date and totalDays
- * 4) Renders lanes with a date scale and swimlane rows
+ * Top-level view that renders lanes with a date scale and swimlane rows
  */
 @Composable
-private fun TimelineView(events: List<Event>) {
-    if (events.isEmpty()) {
+private fun TimelineView(eventInfos: List<EventInfo>, dateScales: List<DateScale>) {
+    if (eventInfos.isEmpty()) {
         // Simple empty-state
         Box(
             modifier = Modifier
@@ -67,52 +65,25 @@ private fun TimelineView(events: List<Event>) {
         return
     }
 
-    // Compute global bounds
-    val minDate = events.minOf { it.startDate }
-
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .padding(8.dp)
             .verticalScroll(rememberScrollState())
     ) {
-        val eventInfos = events.map { event ->
-            val offset = daysBetweenInclusive(minDate, event.startDate).toInt() - 1 // zero-based offset
-            val duration = daysBetweenInclusive(event.startDate, event.endDate).toInt()
-            EventInfo(
-                event = event,
-                offset = offset.coerceAtLeast(0),
-                duration = duration.coerceAtLeast(1),
-                dateScale = DateScale(
-                    dayOfTheWeek = DateFormat.format("EEE", event.startDate) as String,
-                    day = DateFormat.format("dd", event.startDate) as String,
-                    monthName = DateFormat.format("MMM", event.startDate) as String,
-                    monthNumber = String.format(Locale.getDefault(), "%02d", event.startDate.month + 1)
-                )
-            )
-        }
-        val dateScales = eventInfos.getDateScales()
-
-        // Render a simple date scale (labels a cada ~6 divisões para evitar poluição)
         Row(
             modifier = Modifier
                 .horizontalScroll(rememberScrollState())
         ) {
             Column {
                 DateScale(dateScales = dateScales)
-
                 Spacer(modifier = Modifier.height(8.dp))
-
-                // Render each lane. Cada lane é scrollável horizontalmente para suportar timelines longas.
                 SwimlaneRow(eventInfos, dateScales)
             }
         }
     }
 }
 
-/**
- * Uma escala horizontal simples de datas, exibindo um rótulo a cada N dias para legibilidade.
- */
 @Composable
 private fun DateScale(dateScales: List<DateScale>) {
     Row(
@@ -152,8 +123,8 @@ private fun DateScale(dateScales: List<DateScale>) {
 }
 
 /**
- * Linha (lane) da timeline com eventos dispostos proporcionalmente.
- * Garante espaçamento correto e evita peso zero no Spacer.
+ * Timeline lane with events arranged proportionally.
+ * Ensures correct spacing and avoids zero weight in the Spacer.
  */
 @Composable
 private fun SwimlaneRow(eventInfos: List<EventInfo>, dateScales: List<DateScale>) {
@@ -163,13 +134,13 @@ private fun SwimlaneRow(eventInfos: List<EventInfo>, dateScales: List<DateScale>
     ) {
         Column {
             eventInfos.forEach { info ->
-                val startIndex = dateScales.indexOf(dateScales.find { "${it.monthNumber}-${it.day}" == "${info.dateScale.monthNumber}-${info.dateScale.day}" })
-                val endIndex = dateScales.indexOf(dateScales.find { "${it.monthNumber}-${it.day}" == info.endDate })
+                val startIndex = dateScales.indexOf(dateScales.find { "${it.monthNumber}-${it.day}" == "${info.dateScale.monthNumber}-${info.dateScale.day}"})
+                val endIndex = dateScales.indexOf(dateScales.find { "${it.monthNumber}-${it.day}" == info.endDate})
 
                 val eventDuration = (endIndex - startIndex) + 1
                 Row {
-                    if (info.offset > 0) {
-                        Spacer(modifier = Modifier.width((info.offset * 80).dp))
+                    if (startIndex > 0) {
+                        Spacer(modifier = Modifier.width((startIndex * 80).dp))
                     }
                     EventBox(modifier = Modifier.width((eventDuration * 80).dp), eventInfo = info)
                 }
@@ -180,19 +151,19 @@ private fun SwimlaneRow(eventInfos: List<EventInfo>, dateScales: List<DateScale>
 }
 
 /**
- * Caixa individual para um evento, com largura proporcional à duração.
- * Cores fixas para variar visualmente entre eventos.
+ * Individual box for an event, with width proportional to the duration.
+ * Fixed colors to vary visually between events.
  */
 @Composable
 private fun EventBox(modifier: Modifier = Modifier, eventInfo: EventInfo) {
     val colors = listOf(
-        0xFF7C4DFF, // roxo
+        0xFF7C4DFF, // purple
         0xFF03DAC5, // teal
-        0xFFFFB74D, // laranja
-        0xFF90CAF9, // azul claro
-        0xFFEF9A9A  // vermelho claro
+        0xFFFFB74D, // orange
+        0xFF90CAF9, // light blue
+        0xFFEF9A9A  // light red
     )
-    val color = androidx.compose.ui.graphics.Color(colors[eventInfo.event.id % colors.size])
+    val color = Color(colors[eventInfo.event.id % colors.size])
 
     Card(
         modifier = modifier
@@ -203,7 +174,7 @@ private fun EventBox(modifier: Modifier = Modifier, eventInfo: EventInfo) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                // Largura mínima para evitar caixas muito pequenas
+                // Minimum width to avoid very small boxes
                 .widthIn(min = 80.dp)
                 .background(color)
                 .padding(8.dp),
@@ -221,52 +192,4 @@ private fun EventBox(modifier: Modifier = Modifier, eventInfo: EventInfo) {
             )
         }
     }
-}
-
-private data class EventInfo(
-    val event: Event,
-    val offset: Int,
-    val duration: Int,
-    val startDate: String = DateFormat.format("MM-dd", event.startDate) as String,
-    val endDate: String = DateFormat.format("MM-dd", event.endDate) as String,
-    val dateScale: DateScale
-)
-
-private data class DateScale(
-    val dayOfTheWeek: String,
-    val day: String,
-    val monthName: String,
-    val monthNumber: String
-)
-
-/** Dias inclusivos entre duas datas (ex: mesma data => 1 dia). */
-private fun daysBetweenInclusive(start: Date, end: Date): Long {
-    val days = ChronoUnit.DAYS.between(start.toInstant(), end.toInstant())
-    return max(1, days + 1)
-}
-
-private fun List<EventInfo>.getDateScales(): List<DateScale> {
-    val dateScales = mutableListOf<DateScale>()
-    val map = mutableMapOf<String, String>()
-
-    this.forEach { eventInfo ->
-        val monthNumber = String.format(Locale.getDefault(), "%02d", eventInfo.event.endDate.month + 1)
-        if (!map.containsKey(eventInfo.startDate)) {
-            map[eventInfo.startDate] = eventInfo.startDate
-            dateScales.add(eventInfo.dateScale.copy(monthNumber = monthNumber))
-        }
-        if (!map.containsKey(eventInfo.endDate)) {
-            map[eventInfo.endDate] = eventInfo.endDate
-            dateScales.add(
-                DateScale(
-                    dayOfTheWeek = DateFormat.format("EEE", eventInfo.event.endDate) as String,
-                    day = DateFormat.format("dd", eventInfo.event.endDate) as String,
-                    monthName = DateFormat.format("MMM", eventInfo.event.endDate) as String,
-                    monthNumber = monthNumber
-                )
-            )
-        }
-    }
-
-    return dateScales.sortedWith(compareBy({it.monthName}, {it.day}))
 }

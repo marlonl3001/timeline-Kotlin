@@ -1,7 +1,8 @@
-package com.airtable.interview.airtableschedule.presentation.timeline
+package com.airtable.interview.airtableschedule.presentation.timeline.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.airtable.interview.airtableschedule.presentation.timeline.state.TimelineUiState
 import com.airtable.interview.airtableschedule.repositories.EventDataRepository
 import com.airtable.interview.airtableschedule.repositories.EventDataRepositoryImpl
 import kotlinx.coroutines.flow.SharingStarted
